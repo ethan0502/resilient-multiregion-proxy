@@ -1,0 +1,59 @@
+{
+  "_comment": "Template only. Every value below is a placeholder — generate your own with `xray x25519` (key pair) and `uuidgen` (client IDs) before using this. JSON has no comment syntax, hence this field; delete it in a real deployment.",
+  "log": {
+    "loglevel": "warning",
+    "access": "none"
+  },
+  "inbounds": [
+    {
+      "listen": "0.0.0.0",
+      "port": 443,
+      "protocol": "vless",
+      "settings": {
+        "clients": [
+          {
+            "id": "<CLIENT_UUID_1>",
+            "email": "example-client-1",
+            "flow": "xtls-rprx-vision"
+          },
+          {
+            "id": "<CLIENT_UUID_2>",
+            "email": "example-client-2",
+            "flow": "xtls-rprx-vision"
+          }
+        ],
+        "decryption": "none"
+      },
+      "streamSettings": {
+        "network": "tcp",
+        "security": "reality",
+        "realitySettings": {
+          "show": false,
+          "dest": "example-cdn.com:443",
+          "xver": 0,
+          "serverNames": [
+            "example-cdn.com"
+          ],
+          "privateKey": "<REALITY_PRIVATE_KEY>",
+          "shortIds": [
+            "<SHORT_ID_1>",
+            "<SHORT_ID_2>",
+            "<SHORT_ID_3>",
+            "<SHORT_ID_4>",
+            "<SHORT_ID_5>"
+          ]
+        }
+      }
+    }
+  ],
+  "outbounds": [
+    {
+      "protocol": "freedom",
+      "tag": "direct"
+    },
+    {
+      "protocol": "blackhole",
+      "tag": "block"
+    }
+  ]
+}
