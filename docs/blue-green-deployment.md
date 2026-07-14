@@ -4,7 +4,7 @@ This document describes the deployment mechanism used to periodically refresh ea
 
 ## Motivation
 
-A single long-lived proxy process accumulates session state over time, and in practice this deployment saw upload throughput measurably degrade the longer a single process had been running — restarting the process alone would restore full throughput. But a naive periodic restart (cron job, `systemctl restart`) drops every live session on the host simultaneously, which is exactly the client-visible disruption this design avoids.
+A single long-lived proxy process accumulates session state over time, and in practice this deployment saw upload throughput measurably degrade the longer a single process had been running. The degradation was confirmed reproducible, not a one-off: after normal use, a bare `restart` of the process alone — no config or sysctl changes — reliably restored upload back to the node's tuned baseline (a fixed-payload client test that had read ~524 KB/s right after the original network tuning pass). That single observation is what motivated blue-green in the first place: a naive periodic restart (cron job, `systemctl restart`) would fix the degradation but drops every live session on the host simultaneously, which is exactly the client-visible disruption this design avoids — blue-green gets the same "always a recently-restarted process" property without ever taking the public listener down. See [`docs/benchmarks.md`](benchmarks.md) for later multi-node throughput data collected once this design was already live (a different test methodology — larger payload, all nodes in one run — so treat the two data points as separate evidence, not a single before/after pair).
 
 ## Target design
 

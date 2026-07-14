@@ -2,6 +2,8 @@
 
 Real speed-test data backing the throughput claims in [`docs/architecture.md`](architecture.md) ("Cross-region relay chaining"). Server IPs, client UUIDs, and the tester's local machine details have been stripped from the raw output; the numbers themselves are unmodified.
 
+This data was collected with the blue-green front door already live on every node — it's a steady-state, multi-node snapshot, not a before/after comparison. The separate observation that originally justified building blue-green (a bare process restart reliably restoring degraded upload throughput back to a tuned baseline) is a single-node data point from a different test run, described in [`docs/blue-green-deployment.md`](blue-green-deployment.md#motivation) rather than repeated here.
+
 ## Method
 
 - Client vantage point: a Windows host on the operator's own LAN.
