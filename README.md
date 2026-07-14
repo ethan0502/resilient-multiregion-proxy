@@ -83,7 +83,7 @@ The rollout kept the old listener alive during the transition, migrated client p
 
 ### 2. Zero-downtime blue-green refresh, adapted to two different TCP front doors
 
-Long-lived Xray processes accumulated enough session state that upload throughput measurably degraded over time; a naive periodic restart would drop every live session at once. This was confirmed reproducible before building anything: a bare restart of the process, no config changes, reliably brought upload back to the node's tuned baseline — that single repeatable observation is what justified building blue-green instead of just living with the degradation or eating the client-visible disruption of a naive restart. The fix: two backend processes per node behind a TCP-passthrough front door, one `active`, one `backup`/draining, flipped daily by a script that **never flips to an unverified backend** — it restarts only the standby, TLS-probes it for the borrowed certificate, and only then swaps the active symlink and reloads the front door. Established sessions ride out the old worker generation and drain naturally (Xray's own idle-connection timeout does the rest); a refresh in steady state drops close to zero live sessions. Full design, the nginx `stream{}` block rationale (timeouts, keepalive, why `worker_shutdown_timeout` must stay unset), the throughput observation, and the rollback plan are in [`docs/blue-green-deployment.md`](docs/blue-green-deployment.md) — the actual flip scripts and front-door configs run in production are in [`deploy/`](deploy/): [nginx](deploy/nginx/) + [Docker](deploy/xray443-flip-nginx-docker.sh) on Node A, [nginx](deploy/nginx/) + [podman](deploy/xray443-flip-nginx-podman.sh) on Node C, [HAProxy](deploy/haproxy/) + [its own flip script](deploy/xray443-flip-haproxy.sh) on Node B, and the [backend generator](deploy/backends/regen-backends.py) that keeps both blue and green backends byte-identical. Steady-state, multi-node throughput with this design already live is in [`docs/benchmarks.md`](docs/benchmarks.md).
+Long-lived Xray processes accumulated enough session state that upload throughput measurably degraded over time; a naive periodic restart would drop every live session at once. This was confirmed reproducible before building anything: a bare restart of the process, no config changes, reliably brought upload back to the node's tuned baseline — that single repeatable observation is what justified building blue-green instead of just living with the degradation or eating the client-visible disruption of a naive restart. The fix: two backend processes per node behind a TCP-passthrough front door, one `active`, one `backup`/draining, flipped daily by a script that **never flips to an unverified backend** — it restarts only the standby, TLS-probes it for the borrowed certificate, and only then swaps the active symlink and reloads the front door. Established sessions ride out the old worker generation and drain naturally (Xray's own idle-connection timeout does the rest); a refresh in steady state drops close to zero live sessions. Full design, the nginx `stream{}` block rationale (timeouts, keepalive, why `worker_shutdown_timeout` must stay unset), the throughput observation, and the rollback plan are in [`docs/blue-green-deployment.md`](docs/blue-green-deployment.md) — the actual flip scripts and front-door configs run in production are in [`deploy/`](deploy/): [nginx](deploy/nginx/) + [Docker](deploy/xray443-flip-nginx-docker.sh) on Node A, [nginx](deploy/nginx/) + [podman](deploy/xray443-flip-nginx-podman.sh) on Node C, [HAProxy](deploy/haproxy/) + [its own flip script](deploy/xray443-flip-haproxy.sh) on Node B, and the [backend generator](deploy/backends/regen-backends.py) that keeps both blue and green backends byte-identical. Steady-state, multi-node throughput with this design already live is in the [Benchmarks](#benchmarks) section below.
 
 ### 3. A real production incident and its root cause
 
@@ -91,13 +91,30 @@ One node's blue-green front door quietly failed after a few days, and the "obvio
 
 ### 4. Cross-region relay chaining for a specific exit IP with better throughput
 
-One node's own peering path from the client's network is poor (a real inter-carrier congestion issue, confirmed by isolating the proxy stack entirely and comparing raw `scp` throughput over the same path), even though that node's own uplink bandwidth is fine. A second node happens to have much better peering *to* the first node. Rather than accept the slow path, traffic is relayed: client → better-peered node (dedicated relay-only inbound, its own REALITY keypair) → re-encapsulated as a raw TCP client of the target node's egress-only fast path → target node's IP. The relay client is a separate, independently revocable credential from normal end-user clients. Root-caused with `traceroute` and paired raw-socket throughput tests before building the relay, not assumed. The relay entry's actual Xray config template, systemd unit, and the relay-aware backend generator (which gives each blue-green backend a second, REALITY-free inbound just for the relay's server-to-server leg) are in [`deploy/relay/`](deploy/relay/), [`deploy/systemd/xray-relay.service`](deploy/systemd/xray-relay.service), and [`deploy/backends/regen-backends-with-relay.py`](deploy/backends/regen-backends-with-relay.py). Measured before/after throughput for this decision is in [`docs/benchmarks.md`](docs/benchmarks.md).
+One node's own peering path from the client's network is poor (a real inter-carrier congestion issue, confirmed by isolating the proxy stack entirely and comparing raw `scp` throughput over the same path), even though that node's own uplink bandwidth is fine. A second node happens to have much better peering *to* the first node. Rather than accept the slow path, traffic is relayed: client → better-peered node (dedicated relay-only inbound, its own REALITY keypair) → re-encapsulated as a raw TCP client of the target node's egress-only fast path → target node's IP. The relay client is a separate, independently revocable credential from normal end-user clients. Root-caused with `traceroute` and paired raw-socket throughput tests before building the relay, not assumed. The relay entry's actual Xray config template, systemd unit, and the relay-aware backend generator (which gives each blue-green backend a second, REALITY-free inbound just for the relay's server-to-server leg) are in [`deploy/relay/`](deploy/relay/), [`deploy/systemd/xray-relay.service`](deploy/systemd/xray-relay.service), and [`deploy/backends/regen-backends-with-relay.py`](deploy/backends/regen-backends-with-relay.py). Measured relay-vs-direct throughput for this decision is in the [Benchmarks](#benchmarks) section below.
 
 ### 5. A small, safe Python control-plane CLI
 
 [`vpn_user_manager.py`](vpn_user_manager.py) — SSHes to a node, adds/lists/removes REALITY clients with atomic config writes (`jq` + backup + validate + restart + verify, never a bare overwrite), derives the REALITY public key from the private key server-side, and prints both a scannable QR code and a raw share link. Bootstraps its own throwaway virtualenv for the `qrcode` dependency if it isn't already installed, so the script has zero setup steps beyond Python + SSH access.
 
 [`update_profile.py`](update_profile.py) — reads a small per-client policy file (allow/block domain and IP lists) and compiles it into Xray `routing.rules` scoped per client via the `user` field, so individual clients can be sandboxed to specific destinations without affecting anyone else.
+
+## Benchmarks
+
+Real repeated-run speed tests from a client on the operator's own LAN, one node at a time, 3 runs each (8 MiB down + 8 MiB up per run). Collected with the blue-green front door already live on every node — a steady-state snapshot, not a synthetic before/after.
+
+| Node | Exit region | Download (MiB/s) | Upload (MiB/s) | Latency (ms) |
+|---|---|---|---|---|
+| JP direct | Japan | 3.11 | 0.91 | 548 |
+| Tokyo primary | Tokyo | 2.67 | 1.16 | 1182 |
+| Tokyo (alt client) | Tokyo | 2.44 | 1.06 | 1144 |
+| **JP relay → Malaysia** | **Malaysia (via Japan relay)** | **1.60** | **0.81** | 1581 |
+| Malaysia (client A) | Malaysia | 0.87 | 0.38 | 1078 |
+| Malaysia (client B) | Malaysia | 0.70 | 0.28 | 995 |
+
+![Average throughput and latency per node](benchmarks/avg-bar.svg)
+
+The headline result is the **relay row**: routing Malaysia-exit traffic *through* the better-peered Japan node roughly doubles direct-Malaysia download throughput (1.60 vs 0.70–0.87 MiB/s) while keeping the Malaysia exit IP the client actually needs — the measured payoff of the cross-region relay chaining described in Highlight #4. It's a real improvement, not a full fix: the client's own international path to the relay entry point remains the dominant bottleneck. Full methodology, per-node variance, the raw data files, and the caveats (upload endpoint noise, harness latency overhead, small sample size) are in [`benchmarks/`](benchmarks/README.md).
 
 ## Repository layout
 
@@ -113,8 +130,7 @@ One node's own peering path from the client's network is poor (a real inter-carr
 │   ├── architecture.md            # per-node runtime inventory + the OOM/logrotate RCA
 │   ├── upgrade-log.md             # the DPI-hardening before/after, with diagrams
 │   ├── blue-green-deployment.md   # the zero-downtime refresh design in full
-│   ├── client-setup-guide.md      # the plain-language guide given to non-technical users
-│   └── benchmarks.md              # real repeated-run throughput data + analysis
+│   └── client-setup-guide.md      # the plain-language guide given to non-technical users
 ├── deploy/                        # the actual artifacts each node runs, sanitized in place
 │   ├── nginx/                     # stream front-door config (Node A / Node C)
 │   ├── haproxy/                   # TCP front-door config (Node B)
@@ -124,7 +140,8 @@ One node's own peering path from the client's network is poor (a real inter-carr
 │   ├── xray443-flip-nginx-docker.sh   # daily flip, Node A (Docker)
 │   ├── xray443-flip-nginx-podman.sh   # daily flip, Node C (podman)
 │   └── xray443-flip-haproxy.sh        # daily flip, Node B (HAProxy)
-└── benchmarks/                    # raw speed-test data behind docs/benchmarks.md
+└── benchmarks/                    # real speed-test data + methodology (see its README)
+    ├── README.md                  # method, results table, per-node analysis, caveats
     ├── summary.csv / summary.json
     └── avg-bar.svg / run-variability.svg
 ```
