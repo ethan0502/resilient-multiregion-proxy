@@ -25,34 +25,37 @@ This started as personal infrastructure (get around a censoring network, at firs
 ## Architecture
 
 ```
-                      ┌─────────────────────────────────────────┐
-                      │              Client (Clash /             │
-                      │           Shadowrocket / mihomo)          │
-                      └───────────────┬───────────────────────────┘
-                                       │  VLESS + REALITY, TCP, xtls-rprx-vision
-              ┌────────────────────────┼────────────────────────┐
-              ▼                        ▼                        ▼
-   ┌─────────────────────┐  ┌─────────────────────┐  ┌─────────────────────┐
-   │   Node A (Tokyo)     │  │  Node B (Malaysia)   │  │   Node C (Japan)     │
-   │   nginx stream :443   │  │  HAProxy TCP :443     │  │  nginx stream :443   │
-   │  (Docker, host net)   │  │  (Plesk sw-nginx has   │  │  (podman, no SELinux │
-   │                       │  │   no stream module —   │  │   booleans needed)   │
-   │  ┌─────┐   ┌─────┐    │  │   HAProxy owns 443)    │  │  ┌─────┐   ┌─────┐    │
-   │  │xray-a│   │xray-b│   │  │  ┌─────┐   ┌─────┐    │  │  │xray-a│   │xray-b│   │
-   │  │:1443 │   │:2443 │   │  │  │xray-a│   │xray-b│   │  │  │:1443 │   │:2443 │   │
-   │  │active│   │drain │   │  │  │:1443 │   │:2443 │   │  │  │active│   │drain │   │
-   │  └─────┘   └─────┘    │  │  └─────┘   └─────┘    │  │  └─────┘   └─────┘    │
-   └───────────┬───────────┘  └───────────┬───────────┘  └───────────┬───────────┘
-               │ daily cron flip (04:30 local): restart standby,     │
-               │ liveness-probe it, only then swap the active symlink │
-               └───────────────────────────┬──────────────────────────┘
-                                            │
-                          ┌─────────────────┴─────────────────┐
-                          │   Optional: cross-region relay      │
-                          │   Node C entry → re-encapsulate →   │
-                          │   Node B egress (raw TCP fast path, │
-                          │   dedicated relay-only client)      │
-                          └──────────────────────────────────────┘
+                   Client (Clash / Shadowrocket / mihomo)
+                                     |
+                   VLESS + REALITY, TCP, xtls-rprx-vision
+                                     |
+           +--------------------------+-------------------------+
+           |                          |                         |
+           v                          v                         v
++---------------------+   +----------------------+   +---------------------+
+|    Node A - Tokyo   |   |  Node B - Malaysia   |   |    Node C - Japan   |
+|  nginx stream :443  |   |   HAProxy TCP :443   |   |  nginx stream :443  |
+|  (Docker, host net) |   |(no nginx stream mod) |   |       (podman)      |
+|                     |   |                      |   |                     |
+|+--------+ +--------+|   |+--------+ +--------+ |   |+--------+ +--------+|
+|| xray-a | | xray-b ||   || xray-a | | xray-b | |   || xray-a | | xray-b ||
+||  1443  | |  2443  ||   ||  1443  | |  2443  | |   ||  1443  | |  2443  ||
+|| active | | drain  ||   || active | | drain  | |   || active | | drain  ||
+|+--------+ +--------+|   |+--------+ +--------+ |   |+--------+ +--------+|
++---------------------+   +----------------------+   +---------------------+
+           |                          |                         |
+           +--------------------------+-------------------------+
+                                     |
+              daily cron flip (04:30 local): restart standby,
+            liveness-probe it, only then swap the active symlink
+                                     |
+                                     v
+              +----------------------------------------------+
+              |         Optional: cross-region relay         |
+              |      Node C entry -> re-encapsulate ->       |
+              |      Node B egress (raw TCP fast path,       |
+              |         dedicated relay-only client)         |
+              +----------------------------------------------+
 ```
 
 Each node is generated from the **same config template** (`/etc/xray-docker/config.json` in the live deployment) via a small backend generator that produces two byte-identical backends differing only in listen port — so REALITY keys, client UUIDs, and `shortId`s can never drift between the active and standby backend.
@@ -88,7 +91,7 @@ One node's blue-green front door quietly failed after a few days, and the "obvio
 
 ### 4. Cross-region relay chaining for a specific exit IP with better throughput
 
-One node's own peering path from the client's network is poor (a real inter-carrier congestion issue, confirmed by isolating the proxy stack entirely and comparing raw `scp` throughput over the same path), even though that node's own uplink bandwidth is fine. A second node happens to have much better peering *to* the first node. Rather than accept the slow path, traffic is relayed: client → better-peered node (dedicated relay-only inbound, its own REALITY keypair) → re-encapsulated as a raw TCP client of the target node's egress-only fast path → target node's IP. The relay client is a separate, independently revocable credential from normal end-user clients. Root-caused with `traceroute` and paired raw-socket throughput tests before building the relay, not assumed. The relay entry's actual Xray config template, systemd unit, and the relay-aware backend generator (which gives each blue-green backend a second, REALITY-free inbound just for the relay's server-to-server leg) are in [`deploy/relay/`](deploy/relay/), [`deploy/systemd/xray-relay.service`](deploy/systemd/xray-relay.service), and [`deploy/backends/regen-backends-with-relay.py`](deploy/backends/regen-backends-with-relay.py).
+One node's own peering path from the client's network is poor (a real inter-carrier congestion issue, confirmed by isolating the proxy stack entirely and comparing raw `scp` throughput over the same path), even though that node's own uplink bandwidth is fine. A second node happens to have much better peering *to* the first node. Rather than accept the slow path, traffic is relayed: client → better-peered node (dedicated relay-only inbound, its own REALITY keypair) → re-encapsulated as a raw TCP client of the target node's egress-only fast path → target node's IP. The relay client is a separate, independently revocable credential from normal end-user clients. Root-caused with `traceroute` and paired raw-socket throughput tests before building the relay, not assumed. The relay entry's actual Xray config template, systemd unit, and the relay-aware backend generator (which gives each blue-green backend a second, REALITY-free inbound just for the relay's server-to-server leg) are in [`deploy/relay/`](deploy/relay/), [`deploy/systemd/xray-relay.service`](deploy/systemd/xray-relay.service), and [`deploy/backends/regen-backends-with-relay.py`](deploy/backends/regen-backends-with-relay.py). Measured before/after throughput for this decision is in [`docs/benchmarks.md`](docs/benchmarks.md).
 
 ### 5. A small, safe Python control-plane CLI
 
@@ -110,16 +113,20 @@ One node's own peering path from the client's network is poor (a real inter-carr
 │   ├── architecture.md            # per-node runtime inventory + the OOM/logrotate RCA
 │   ├── upgrade-log.md             # the DPI-hardening before/after, with diagrams
 │   ├── blue-green-deployment.md   # the zero-downtime refresh design in full
-│   └── client-setup-guide.md      # the plain-language guide given to non-technical users
-└── deploy/                        # the actual artifacts each node runs, sanitized in place
-    ├── nginx/                     # stream front-door config (Node A / Node C)
-    ├── haproxy/                   # TCP front-door config (Node B)
-    ├── systemd/                   # podman-wrapped backend + relay unit templates
-    ├── backends/                  # config generators (plain + relay-aware variants)
-    ├── relay/                     # relay entry node's Xray config template
-    ├── xray443-flip-nginx-docker.sh   # daily flip, Node A (Docker)
-    ├── xray443-flip-nginx-podman.sh   # daily flip, Node C (podman)
-    └── xray443-flip-haproxy.sh        # daily flip, Node B (HAProxy)
+│   ├── client-setup-guide.md      # the plain-language guide given to non-technical users
+│   └── benchmarks.md              # real repeated-run throughput data + analysis
+├── deploy/                        # the actual artifacts each node runs, sanitized in place
+│   ├── nginx/                     # stream front-door config (Node A / Node C)
+│   ├── haproxy/                   # TCP front-door config (Node B)
+│   ├── systemd/                   # podman-wrapped backend + relay unit templates
+│   ├── backends/                  # config generators (plain + relay-aware variants)
+│   ├── relay/                     # relay entry node's Xray config template
+│   ├── xray443-flip-nginx-docker.sh   # daily flip, Node A (Docker)
+│   ├── xray443-flip-nginx-podman.sh   # daily flip, Node C (podman)
+│   └── xray443-flip-haproxy.sh        # daily flip, Node B (HAProxy)
+└── benchmarks/                    # raw speed-test data behind docs/benchmarks.md
+    ├── summary.csv / summary.json
+    └── avg-bar.svg / run-variability.svg
 ```
 
 ## Quickstart (adapting this to your own deployment)

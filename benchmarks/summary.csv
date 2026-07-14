@@ -1,0 +1,7 @@
+node,label,exit_region,download_mib_s,upload_mib_s,latency_ms,successful_runs
+JP direct,JP-443-direct,Japan,3.11,0.91,547.93,3
+Tokyo primary,Tokyo-443-primary,Tokyo,2.67,1.16,1182.07,3
+Tokyo Windows pkg,Tokyo-443-windowspkg,Tokyo,2.44,1.06,1143.73,3
+JP relay -> MY,JP-8443-relay-to-Malaysia,Malaysia (via Japan relay),1.60,0.81,1581.27,3
+Malaysia vps@my,Malaysia-443-vpsmy,Malaysia,0.87,0.38,1078.00,3
+Malaysia shared,Malaysia-443-shared,Malaysia,0.70,0.28,994.80,3

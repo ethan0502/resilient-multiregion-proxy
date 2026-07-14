@@ -1,0 +1,72 @@
+{
+  "_comment": "Sanitized from a real repeated multi-node speed test. Real server IPs, client UUIDs, and the tester's local Windows username were stripped; per-node aggregate numbers are unmodified.",
+  "meta": {
+    "runs_per_node": 3,
+    "download_bytes": 8388608,
+    "upload_bytes": 8388608,
+    "latency_count_per_run": 5,
+    "note": "Traffic measured from a client machine on the operator's own LAN through a temporary no-TUN Mihomo profile, one node at a time."
+  },
+  "nodes": [
+    {
+      "label": "Tokyo-443-primary",
+      "exit_region": "Tokyo",
+      "successful_runs": 3,
+      "attempted_runs": 3,
+      "latency_avg_s": 1.1820666666666666,
+      "latency_median_s": 1.062,
+      "download_bps_avg": 2796202.0,
+      "upload_bps_avg": 1215045.6666666667
+    },
+    {
+      "label": "Tokyo-443-windowspkg",
+      "exit_region": "Tokyo",
+      "successful_runs": 3,
+      "attempted_runs": 3,
+      "latency_avg_s": 1.1437333333333333,
+      "latency_median_s": 1.063,
+      "download_bps_avg": 2563185.3333333335,
+      "upload_bps_avg": 1109630.6666666667
+    },
+    {
+      "label": "Malaysia-443-vpsmy",
+      "exit_region": "Malaysia",
+      "successful_runs": 3,
+      "attempted_runs": 3,
+      "latency_avg_s": 1.078,
+      "latency_median_s": 0.797,
+      "download_bps_avg": 909875.0,
+      "upload_bps_avg": 401254.0
+    },
+    {
+      "label": "Malaysia-443-shared",
+      "exit_region": "Malaysia",
+      "successful_runs": 3,
+      "attempted_runs": 3,
+      "latency_avg_s": 0.9948,
+      "latency_median_s": 0.75,
+      "download_bps_avg": 733226.0,
+      "upload_bps_avg": 288555.0
+    },
+    {
+      "label": "JP-443-direct",
+      "exit_region": "Japan",
+      "successful_runs": 3,
+      "attempted_runs": 3,
+      "latency_avg_s": 0.5479333333333334,
+      "latency_median_s": 0.531,
+      "download_bps_avg": 3262236.0,
+      "upload_bps_avg": 954282.3333333334
+    },
+    {
+      "label": "JP-8443-relay-to-Malaysia",
+      "exit_region": "Malaysia (via Japan relay)",
+      "successful_runs": 3,
+      "attempted_runs": 3,
+      "latency_avg_s": 1.5812666666666666,
+      "latency_median_s": 1.469,
+      "download_bps_avg": 1677721.0,
+      "upload_bps_avg": 846648.3333333334
+    }
+  ]
+}
