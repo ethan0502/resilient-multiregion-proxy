@@ -4,17 +4,17 @@ The live deployment ships each new client a small, self-contained installer fold
 
 ## How it works — and why it is secure
 
-Most VPNs are easy for censors to detect because their traffic has a distinctive fingerprint. This deployment uses a different approach called **VLESS + REALITY**, specifically designed to be undetectable.
+Many conventional VPNs expose a recognizable traffic fingerprint. This deployment instead uses a camouflaged TLS proxy handshake designed to avoid presenting a stable VPN signature.
 
 ### The disguise
 
-When a client connects to the proxy server, the connection looks — to any observer on the network — exactly like an ordinary HTTPS visit to a well-known website. A network-level censor sees normal, legitimate encrypted web traffic and has no grounds to block it. There is no VPN handshake, no distinctive header, nothing to flag.
+When a client connects to the proxy server, the initial exchange is designed to resemble an ordinary HTTPS visit to a well-known website. A network observer sees encrypted web-like traffic rather than a conventional VPN handshake or fixed protocol header. This reduces the observable fingerprint; it does not make blocking or detection impossible under every network condition.
 
-This works because REALITY "borrows" the TLS certificate of a real public website. The server presents that certificate during the handshake, making the connection genuinely indistinguishable from a real visit to that site. Only a client holding the correct private key can tell the difference and proceed to use it as a proxy.
+The handshake uses a real public website as its camouflage target. An unauthenticated probe receives that site's ordinary TLS certificate, while a correctly configured client can complete the authenticated proxy handshake. The specific protocol fields remain in the generated client profile, but users do not need to configure them manually.
 
-### The credential is a key pair, not a password
+### Access uses cryptographic parameters, not a shared password
 
-Access is controlled by a pair of cryptographic keys — a public key on the server, a private key baked into the client's profile. Even if every packet is intercepted, nothing can connect to the proxy without the matching private key. There is no password to guess or brute-force.
+Access depends on server key material plus an allowlisted client identifier stored in the pre-filled profile. Capturing traffic does not reveal a reusable plaintext password, and an arbitrary client cannot use the proxy without the required profile parameters.
 
 ### Traffic is encrypted end-to-end
 
@@ -30,4 +30,4 @@ For a real client, the folder handed over contains: a one-click setup script, th
 
 ## Design goal behind this document
 
-The security properties above (undetectable handshake, key-pair-only auth, end-to-end encryption) are the same regardless of audience, but the framing here is deliberately non-technical: no protocol names beyond the one the client sees on screen, no assumption of networking background, and a troubleshooting section (omitted here, kept in the real deployment's copy) written entirely around "what did you observe" rather than "what did you configure." Writing this well mattered as much as the underlying design being correct — a proxy that's technically sound but that the intended recipient can't actually get running is not a solved problem.
+The security properties above (camouflaged handshake, profile-based authentication, and encrypted transport) are the same regardless of audience, but the framing here is deliberately non-technical: no unnecessary protocol names, no assumption of networking background, and a troubleshooting section (omitted here, kept in the real deployment's copy) written entirely around "what did you observe" rather than "what did you configure." Writing this well mattered as much as the underlying design being correct — a proxy that's technically sound but that the intended recipient can't actually get running is not a solved problem.

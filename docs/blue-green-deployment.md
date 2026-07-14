@@ -23,7 +23,7 @@ This is blue-green, not load balancing. The front door's upstream has one backen
 
 Why not `least_conn` / round-robin dual-active: both backends would accumulate session pressure simultaneously — the exact problem being solved — and every refresh would kill half of all long-lived sessions after only a short drain. Blue-green instead gives each backend a full drain window and keeps the actively-serving process always recently restarted.
 
-Both backend processes share the same client-facing identity — same client list, same REALITY key pair, same SNI, same `shortId`s, same flow setting — generated from a single source-of-truth config so they cannot drift apart. Only the backend listen port differs. Client profiles keep using the public host and port unchanged; the flip is entirely server-side.
+Both backend processes share the same client-facing identity — same client list, cryptographic key pair, camouflage target, handshake identifiers, and traffic-shaping setting — generated from a single source-of-truth config so they cannot drift apart. Only the backend listen port differs. Client profiles keep using the public host and port unchanged; the flip is entirely server-side.
 
 ## Front-door settings that decide client-visible behavior
 
@@ -59,11 +59,11 @@ Rationale for each setting:
 - **`so_keepalive`** — TCP keepalive toward clients reaps dead connections (client rebooted, network changed) in minutes instead of never, attacking the session-accumulation problem directly rather than only working around it with scheduled flips.
 - **`proxy_next_upstream`** (on by default in the stream module) — if a connect to the active backend fails mid-restart, the front door transparently retries the standby. Left on.
 - **Do not set a worker/reload shutdown timeout.** On reload, old worker generations keep serving established connections until they close naturally; a shutdown timeout would kill draining sessions on every single flip and defeat the entire design.
-- TCP passthrough only, always — the front door never terminates TLS or REALITY. (An optional future step is enabling `PROXY protocol` to restore real client IPs in proxy-side logs; deliberately left off in this design since it must be enabled on both sides simultaneously and adds nothing client-visible.)
+- TCP passthrough only, always — the front door never terminates TLS or the server's camouflaged handshake. (An optional future step is enabling `PROXY protocol` to restore real client IPs in proxy-side logs; deliberately left off in this design since it must be enabled on both sides simultaneously and adds nothing client-visible.)
 
 ## Liveness probe
 
-Used throughout deployment and the daily flip: an unauthorized TLS client is forwarded by REALITY to the borrowed origin, so a plain probe against a backend must return that origin's real certificate.
+Used throughout deployment and the daily flip: an unauthorized TLS client is forwarded to the camouflage origin, so a plain probe against a backend must return that origin's real certificate.
 
 ```bash
 openssl s_client -connect 127.0.0.1:1443 -servername <CDN_SNI> -tls1_3 </dev/null 2>/dev/null \
