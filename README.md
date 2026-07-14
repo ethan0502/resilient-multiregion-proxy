@@ -2,7 +2,7 @@
 
 A multi-region VLESS+REALITY proxy deployment: three VPS nodes across two countries, each fronted by a zero-downtime blue-green TCP passthrough, plus a cross-region relay chain and a small Python control-plane CLI. This repo documents the architecture, the engineering decisions behind it, and the tooling — with all server addresses, keys, and client identifiers replaced by placeholders. It is a sanitized companion to a real deployment I operate, published as evidence of the systems/network engineering work referenced in my grad-school application materials.
 
-**Author:** Y.J. Xu (徐奕俊) · [github.com/ethan0502](https://github.com/ethan0502)
+**Author:** Y.J. Xu · [github.com/ethan0502](https://github.com/ethan0502)
 
 ---
 
